@@ -3,6 +3,8 @@
 Self-hosted GLM-OCR pipeline: vLLM serves `zai-org/GLM-OCR`, FastAPI wraps it,
 accepts PDF → returns table (JSON or XLSX).
 
+Repo: https://github.com/greenbutton75/GLMOCR
+
 ---
 
 ## 1. Instance Requirements
@@ -32,108 +34,81 @@ Do NOT expose 18080 — vLLM listens there but only needs to be reachable from l
 
 ### Environment Variables
 
-None required — everything is configured via the startup script and YAML config.
+None required.
 
 ### Onstart Script
 
-Paste as the vast.ai "Onstart Script". It runs once when the instance boots,
-installs vLLM (the slow part, ~10 min), and creates the directory structure.
-After SSH becomes available you finish setup manually with `deploy.sh`.
+Paste this as the vast.ai **Onstart Script**.
+It clones the repo, installs everything, and starts both services automatically.
+No manual steps needed after instance boot.
 
 ```bash
 #!/bin/bash
 set -euo pipefail
 
-WORKDIR=/root/services/glmocr-401k
-VENV=$WORKDIR/.venv
+REPO=https://github.com/greenbutton75/GLMOCR.git
+CLONE_DIR=/root/GLMOCR
+SERVICE_DIR=$CLONE_DIR/services/glmocr_401k_service
 
-mkdir -p $WORKDIR/{logs,tmp,run}
-cd $WORKDIR
+# Clone or update repo
+if [ -d "$CLONE_DIR/.git" ]; then
+    echo "==> Updating repo..."
+    cd $CLONE_DIR && git pull
+else
+    echo "==> Cloning repo..."
+    git clone $REPO $CLONE_DIR
+fi
 
-python3 -m venv $VENV
-source $VENV/bin/activate
-pip install -q -U pip setuptools==75.8.0 wheel
-
-# vLLM must be installed first — it pins its own torch version.
-# Installing other packages before vLLM causes torch conflicts.
-pip install -q -U "vllm>=0.17.0"
-
-echo "==> vLLM installed. SSH in and run deploy.sh to finish."
+chmod +x $SERVICE_DIR/deploy.sh
+$SERVICE_DIR/deploy.sh
 ```
+
+That's it — the instance is fully ready when `deploy.sh` finishes (~15 min on first boot
+due to model download; ~5 min on subsequent boots if disk is preserved).
 
 ---
 
-## 3. Files to Copy After SSH
+## 3. Verify After Boot
 
-After the instance is running (onstart finishes), copy the service files from your local machine.
-
-All source files live in `D:\Work\ML\GLM-OCR\services\glmocr_401k_service\`.
+Check in vast.ai UI that the instance shows "Running", then from Windows:
 
 ```powershell
-$IP   = "<INSTANCE_IP>"
-$PORT = "<SSH_PORT>"
-
-# Create dir (in case onstart hasn't finished yet)
-ssh -p $PORT root@$IP "mkdir -p /root/services/glmocr-401k"
-
-# Copy service files
-scp -P $PORT `
-  "D:\Work\ML\GLM-OCR\services\glmocr_401k_service\app.py" `
-  "D:\Work\ML\GLM-OCR\services\glmocr_401k_service\config.selfhosted.yaml" `
-  "D:\Work\ML\GLM-OCR\services\glmocr_401k_service\requirements.txt" `
-  "D:\Work\ML\GLM-OCR\services\glmocr_401k_service\deploy.sh" `
-  "root@${IP}:/root/services/glmocr-401k/"
+# Replace IP and PORT with values from vast.ai "IP & Port Info"
+curl.exe -s "http://<PublicIP>:<MappedPort>/health"
+# Expected: {"status":"ok","config_path":...}
 ```
 
----
-
-## 4. Deploy
-
-SSH in and run:
-
-```bash
-cd /root/services/glmocr-401k
-chmod +x deploy.sh
-./deploy.sh
-```
-
-`deploy.sh` does:
-1. Creates `logs/`, `tmp/`, `run/` dirs
-2. Creates/reuses `.venv`
-3. `pip install vllm` (skipped fast if onstart already did it)
-4. `pip install -r requirements.txt` (remaining packages)
-5. Starts vLLM on port **18080** (background, waits up to 10 min for readiness)
-6. Starts FastAPI on port **18001** (background, waits for `/health`)
-7. Prints summary
-
-vLLM parameters used on a free A100 80 GB:
-
-```
---max-model-len 32768
---max-num-seqs 1
---gpu-memory-utilization 0.85
-```
-
----
-
-## 5. Health Checks
+Or from SSH:
 
 ```bash
 curl http://127.0.0.1:18001/health
 curl http://127.0.0.1:18080/v1/models
 ```
 
-From Windows (after instance is running with port 18001 exposed):
+---
 
-```
-http://<PublicIP>:<MappedPort>/health
+## 4. Run Batch OCR (Windows)
+
+Script: `D:\Work\ML\GLM-OCR\scripts\batch_ocr.ps1`
+
+```powershell
+# Direct IP — replace with your instance values from vast.ai UI
+.\batch_ocr.ps1 -ApiUrl "http://<PublicIP>:<MappedPort>" -InputDir "D:\Work\Riskostat\Corrections\10"
+
+# Skip already-processed files on re-run
+.\batch_ocr.ps1 -ApiUrl "http://<PublicIP>:<MappedPort>" -SkipExisting
+
+# Save XLSX to a separate folder
+.\batch_ocr.ps1 -ApiUrl "http://<PublicIP>:<MappedPort>" `
+  -InputDir "D:\Work\Riskostat\Corrections\10" `
+  -OutDir "D:\Work\Riskostat\Corrections\10\xlsx_results"
 ```
 
 ---
 
-## 6. Test Parsing
+## 5. Test Single PDF
 
-### Debug JSON (see all tables + region counts)
+### Debug JSON
 
 ```bash
 curl -X POST http://127.0.0.1:18001/parse-pdf \
@@ -155,7 +130,7 @@ for i, t in enumerate(d.get('tables', [])):
 "
 ```
 
-### XLSX (investment tables only)
+### XLSX
 
 ```bash
 curl -X POST http://127.0.0.1:18001/parse-pdf \
@@ -165,43 +140,52 @@ curl -X POST http://127.0.0.1:18001/parse-pdf \
   -o /tmp/tables.xlsx --progress-bar
 ```
 
-Download to Windows:
-
-```powershell
-scp -P $PORT root@$IP:/tmp/tables.xlsx "D:\Work\ML\GLM-OCR\"
-```
-
 ---
 
-## 7. Restart After Outbid
+## 6. Restart After Outbid (disk preserved)
 
-Just create a new instance from the same template. After SSH:
+If vast.ai recovered the instance with existing disk, services were killed — re-run:
 
 ```bash
-cd /root/services/glmocr-401k
-./deploy.sh
+/root/GLMOCR/services/glmocr_401k_service/deploy.sh
 ```
 
-(Re-copy files from local first if the new instance has a clean disk.)
+If disk was wiped (brand new instance): Onstart Script handles everything automatically.
 
 ---
 
-## 8. Manual Service Restart (without deploy.sh)
+## 7. Update Service Files
 
-If vLLM is already running and you only need to restart the API:
+Push changes from local:
+
+```powershell
+cd "D:\Work\ML\GLM-OCR"
+git add -A && git commit -m "update" && git push
+```
+
+Pull and restart on server:
+
+```bash
+cd /root/GLMOCR && git pull
+/root/GLMOCR/services/glmocr_401k_service/deploy.sh
+```
+
+---
+
+## 8. Manual API Restart Only (vLLM already running)
 
 ```bash
 kill $(ss -tlnp | grep ':18001' | grep -oP 'pid=\K[0-9]+') 2>/dev/null; sleep 2
 
-source /root/services/glmocr-401k/.venv/bin/activate
-export GLMOCR_CONFIG_PATH=/root/services/glmocr-401k/config.selfhosted.yaml
-export GLMOCR_UPLOAD_TMP_DIR=/root/services/glmocr-401k/tmp
+source /root/GLMOCR/services/glmocr_401k_service/.venv/bin/activate
+export GLMOCR_CONFIG_PATH=/root/GLMOCR/services/glmocr_401k_service/config.selfhosted.yaml
+export GLMOCR_UPLOAD_TMP_DIR=/root/GLMOCR/services/glmocr_401k_service/tmp
 export GLMOCR_MAX_PDF_SIZE_MB=150
 
 nohup uvicorn app:app \
   --host 0.0.0.0 --port 18001 --workers 1 \
-  > /root/services/glmocr-401k/logs/api.log 2>&1 &
-echo $! > /root/services/glmocr-401k/run/api.pid
+  > /root/GLMOCR/services/glmocr_401k_service/logs/api.log 2>&1 &
+echo $! > /root/GLMOCR/services/glmocr_401k_service/run/api.pid
 sleep 12 && curl -s http://127.0.0.1:18001/health
 ```
 
@@ -210,57 +194,46 @@ sleep 12 && curl -s http://127.0.0.1:18001/health
 ## 9. Logs
 
 ```bash
-tail -f /root/services/glmocr-401k/logs/vllm.log
-tail -f /root/services/glmocr-401k/logs/api.log
-```
-
-GPU usage:
-
-```bash
+tail -f /root/GLMOCR/services/glmocr_401k_service/logs/vllm.log
+tail -f /root/GLMOCR/services/glmocr_401k_service/logs/api.log
 watch -n 2 nvidia-smi
 ```
 
 ---
 
-## 10. Known Issues & Fixes
+## 10. Known Issues & Fixes (glmocr 0.1.3 bugs)
 
-These are bugs in `glmocr 0.1.3` that require explicit values in `config.selfhosted.yaml`.
-All fixes are already applied in the checked-in config — this section explains why.
+All fixes already applied in `config.selfhosted.yaml` — this section explains why.
 
 ### Port conflicts on vast.ai
 
-Vast.ai reserves ports **8080** and **8001** internally.
+Vast.ai occupies ports **8080** and **8001** internally.
 - vLLM must use `18080`
 - FastAPI must use `18001`
 
 ### `LayoutConfig has no attribute id2label`
 
-`PPDocLayoutDetector.__init__` reads `config.id2label`. This field is not declared in
-`LayoutConfig` pydantic schema, so accessing it raises `AttributeError`.
-**Fix:** add full `id2label` mapping (from model's `config.json`) to the `layout:` section.
+`PPDocLayoutDetector.__init__` reads `config.id2label`. Field not declared in pydantic schema
+→ `AttributeError`. **Fix:** add full `id2label` mapping (from model's HF `config.json`) to
+the `layout:` section in YAML.
 
-### `PipelineConfig.region_maxsize` is `null`, causes `Queue(maxsize=None)` crash
+### `Queue(maxsize=None)` crash
 
-`region_maxsize` IS a declared field of `PipelineConfig` with `default: null`.
-`getattr(config, "region_maxsize", 800)` returns `null` (attribute exists!), not `800`.
-`queue.Queue(maxsize=None)` → `TypeError: '>' not supported between NoneType and int`.
-**Fix:** explicitly set `region_maxsize: 800` and `page_maxsize: 100` in the `pipeline:` section.
+`PipelineConfig.region_maxsize` is a declared field with `default: null`. `getattr(..., 800)`
+returns `null` (attribute exists!), not `800`. `Queue(maxsize=None)` → TypeError.
+**Fix:** explicitly set `region_maxsize: 800` and `page_maxsize: 100` under `pipeline:`.
 
-### `LayoutDetectionThread: 'NoneType' object has no attribute 'items'`
+### `LayoutDetectionThread: 'NoneType' has no attribute 'items'`
 
-Two fields in `LayoutConfig` have `default: null` but are used without null checks:
-- `threshold_by_class` — iterated with `.items()` in `_apply_per_class_threshold`
-- `label_task_mapping` — iterated with `.items()` to assign OCR task per region type.
-  If empty/null, **all regions are skipped** (task_type stays None → `continue`).
-
-**Fix:** set `threshold_by_class: {}` and provide full `label_task_mapping` with all
-PP-DocLayoutV3 label names mapped to task `text`.
+Two `LayoutConfig` fields have `default: null` but are iterated without null checks:
+- `threshold_by_class` — fix: `threshold_by_class: {}`
+- `label_task_mapping` — if null/empty, ALL regions are skipped (task_type=None → continue).
+  Fix: map all PP-DocLayoutV3 labels to task `text` (see config).
 
 ### `transformers 5.x` incompatibility warning
 
-`vllm 0.17.1` declares `requires transformers<5`. Installing `glmocr[selfhosted]` afterwards
-upgrades transformers to 5.x. This produces a pip warning but **does not break runtime**.
-Install order: vllm first, then everything else.
+`vllm 0.17.1` requires `transformers<5`, but `glmocr[selfhosted]` installs 5.x.
+This is a pip warning only — runtime works fine. Install order: vllm first, then rest.
 
 ---
 
