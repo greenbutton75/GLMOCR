@@ -235,6 +235,21 @@ Two `LayoutConfig` fields have `default: null` but are iterated without null che
 `vllm 0.17.1` requires `transformers<5`, but `glmocr[selfhosted]` installs 5.x.
 This is a pip warning only — runtime works fine. Install order: vllm first, then rest.
 
+### `Could not import module "app"` on API start
+
+`nohup uvicorn app:app` looks for `app.py` in the process working directory (`cwd`).
+When the Onstart Script calls `deploy.sh`, cwd is `/root`, not the service directory.
+**Fix:** `--app-dir "$WORKDIR"` in the uvicorn command (already applied in `deploy.sh`).
+
+### `cudaErrorContained` — hardware GPU error
+
+```
+torch.AcceleratorError: CUDA error: Invalid access of peer GPU memory over nvlink or a hardware error
+```
+
+Bad VRAM or NVLink state left by a previous tenant. Not fixable in software.
+**Fix:** destroy the instance, rent a new one. Onstart Script handles full setup automatically.
+
 ---
 
 ## 11. API Reference

@@ -581,6 +581,73 @@ scp -P 39433 root@117.18.102.42:/root/services/glmocr-401k/TUNNELLCONSULTINGINC_
 Причина уже не в деплое, а в самом extraction pipeline.
 
 
+## Итог деплоя на свободной A100 (2026-03-20)
+
+### Результаты
+
+Сервис поднят и протестирован на чистой A100 80GB PCIe.
+
+- `MAGNETIKAINC.pdf` → `all_tables_count: 1`, `rows=38` — полная таблица (раньше было 2-3 строки)
+- `TUNNELLCONSULTINGINC_434593.pdf` → `all_tables_count: 2`, `rows=16+16` — обе таблицы без поворота
+
+### Всё перенесено в git-репозиторий
+
+Репо: https://github.com/greenbutton75/GLMOCR
+
+Файлы:
+- `services/glmocr_401k_service/app.py`
+- `services/glmocr_401k_service/config.selfhosted.yaml`
+- `services/glmocr_401k_service/requirements.txt`
+- `services/glmocr_401k_service/deploy.sh`
+- `scripts/batch_ocr.ps1`
+- `docs/vastai_deploy.md`
+
+### Onstart-скрипт для vast.ai
+
+```bash
+#!/bin/bash
+set -euo pipefail
+REPO=https://github.com/greenbutton75/GLMOCR.git
+CLONE_DIR=/root/GLMOCR
+SERVICE_DIR=$CLONE_DIR/services/glmocr_401k_service
+if [ -d "$CLONE_DIR/.git" ]; then
+    cd $CLONE_DIR && git pull
+else
+    git clone $REPO $CLONE_DIR
+fi
+chmod +x $SERVICE_DIR/deploy.sh
+$SERVICE_DIR/deploy.sh
+```
+
+### Порты на vast.ai
+
+- vast.ai занимает `8080` и `8001` внутренне
+- vLLM: `18080` (внутренний)
+- FastAPI: `18001` (открыть в шаблоне: `-p 18001:18001`)
+
+### Баги glmocr 0.1.3 и их фиксы в `config.selfhosted.yaml`
+
+Все фиксы уже в конфиге. Подробнее — `docs/vastai_deploy.md` секция 10.
+
+1. `id2label` — не объявленное поле, AttributeError → добавить полный маппинг из HF config.json
+2. `region_maxsize: null` → `getattr(..., 800)` возвращает null → `Queue(maxsize=None)` крэш → явно `region_maxsize: 800`
+3. `threshold_by_class: null` → `.items()` крэш → `threshold_by_class: {}`
+4. `label_task_mapping: null` → все регионы пропускаются → добавить маппинг всех лейблов на task `text`
+
+### Проблема с uvicorn `Could not import module "app"`
+
+**Причина:** `nohup uvicorn app:app` ищет `app.py` в cwd, а onstart-скрипт запускает
+`deploy.sh` из `/root`, не из директории сервиса.
+
+**Фикс:** добавить `--app-dir "$WORKDIR"` в команду запуска uvicorn в `deploy.sh`.
+
+### `cudaErrorContained` — аппаратная ошибка GPU
+
+**Причина:** битая VRAM или NVLink от предыдущего тенанта.
+
+**Фикс:** просто сменить инстанс. С новым всё поднимается нормально.
+
+
 ## Что стоит сделать завтра на свободной машине
 
 На машине, где не будет других сервисов, нужно начать именно с этого сценария.
