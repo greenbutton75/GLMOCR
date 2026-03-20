@@ -1,0 +1,19 @@
+[Unit]
+Description=GLM-OCR 401k PDF API
+After=network-online.target glmocr-vllm.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ocr
+WorkingDirectory=/opt/services/glmocr-401k
+Environment=PYTHONUNBUFFERED=1
+Environment=GLMOCR_CONFIG_PATH=/opt/services/glmocr-401k/config.selfhosted.yaml
+Environment=GLMOCR_UPLOAD_TMP_DIR=/opt/services/glmocr-401k/tmp
+Environment=GLMOCR_MAX_PDF_SIZE_MB=150
+ExecStart=/opt/services/glmocr-401k/.venv/bin/uvicorn app:app --host 0.0.0.0 --port 8001 --workers 1
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

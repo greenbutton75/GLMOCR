@@ -1,0 +1,103 @@
+server:
+  host: "0.0.0.0"
+  port: 8001
+  debug: false
+
+logging:
+  level: INFO
+
+pipeline:
+  maas:
+    enabled: false
+
+  ocr_api:
+    api_host: 127.0.0.1
+    api_port: 18080
+    model: glm-ocr
+    connect_timeout: 180
+    request_timeout: 900
+    retry_max_attempts: 2
+    connection_pool_size: 64
+    max_workers: 8
+
+  page_loader:
+    max_tokens: 8192
+    temperature: 0.01
+    image_format: JPEG
+    min_pixels: 12544
+    max_pixels: 71372800
+    pdf_dpi: 200
+    pdf_max_pages: null
+    pdf_verbose: false
+    default_prompt: >
+      Recognize the text in the image and output in Markdown format.
+      Preserve the original layout (headings/paragraphs/tables/formulas).
+      Do not fabricate content that does not exist in the image.
+
+  max_workers: 8
+  page_maxsize: 100
+  region_maxsize: 800
+
+  result_formatter:
+    output_format: both
+    filter_nested: true
+    min_overlap_ratio: 0.8
+
+  enable_layout: true
+
+  layout:
+    model_dir: PaddlePaddle/PP-DocLayoutV3_safetensors
+    threshold: 0.3
+    threshold_by_class: {}
+    label_task_mapping:
+      text:
+        - abstract
+        - algorithm
+        - aside_text
+        - chart
+        - content
+        - formula
+        - doc_title
+        - figure_title
+        - footer
+        - footnote
+        - formula_number
+        - header
+        - image
+        - number
+        - paragraph_title
+        - reference
+        - reference_content
+        - seal
+        - table
+        - text
+        - vision_footnote
+    batch_size: 1
+    workers: 1
+    cuda_visible_devices: "0"
+    id2label:
+      0: abstract
+      1: algorithm
+      2: aside_text
+      3: chart
+      4: content
+      5: formula
+      6: doc_title
+      7: figure_title
+      8: footer
+      9: footer
+      10: footnote
+      11: formula_number
+      12: header
+      13: header
+      14: image
+      15: formula
+      16: number
+      17: paragraph_title
+      18: reference
+      19: reference_content
+      20: seal
+      21: table
+      22: text
+      23: text
+      24: vision_footnote

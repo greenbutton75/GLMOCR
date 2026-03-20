@@ -1,0 +1,18 @@
+[Unit]
+Description=GLM-OCR vLLM model server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ocr
+WorkingDirectory=/opt/services/glmocr-401k
+Environment=HF_HOME=/opt/services/glmocr-401k/.cache/huggingface
+Environment=TRANSFORMERS_CACHE=/opt/services/glmocr-401k/.cache/huggingface
+Environment=CUDA_VISIBLE_DEVICES=0
+ExecStart=/opt/services/glmocr-401k/.venv/bin/vllm serve zai-org/GLM-OCR --host 0.0.0.0 --port 8080 --served-model-name glm-ocr --allowed-local-media-path /opt/services/glmocr-401k/tmp
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

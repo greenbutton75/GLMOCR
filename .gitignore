@@ -1,0 +1,13 @@
+*.html
+*.xlsx
+*.json
+*.pdf
+__pycache__/
+*.pyc
+.venv/
+.venv2/
+logs/
+tmp/
+run/
+.cache/
+schema_dump.py
