@@ -21,12 +21,12 @@ pipeline:
     max_workers: 8
 
   page_loader:
-    max_tokens: 8192
+    max_tokens: 12288
     temperature: 0.01
-    image_format: JPEG
+    image_format: PNG
     min_pixels: 12544
     max_pixels: 71372800
-    pdf_dpi: 200
+    pdf_dpi: 300
     pdf_max_pages: null
     pdf_verbose: false
     default_prompt: >
@@ -41,7 +41,7 @@ pipeline:
   result_formatter:
     output_format: both
     filter_nested: true
-    min_overlap_ratio: 0.8
+    min_overlap_ratio: 0.7
 
   enable_layout: true
 

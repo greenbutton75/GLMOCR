@@ -69,6 +69,25 @@ due to model download; ~5 min on subsequent boots if disk is preserved).
 
 ---
 
+### OCR Quality Notes
+
+Current best-tested defaults in `config.selfhosted.yaml`:
+
+- `page_loader.pdf_dpi: 300`
+- `page_loader.image_format: PNG`
+- `page_loader.max_tokens: 12288`
+- `result_formatter.min_overlap_ratio: 0.7`
+
+These settings were validated on a live A100 instance against a difficult Schedule H PDF (`YUASABATTERYINC_415776.pdf`) and gave the best overall balance.
+
+Important findings from that A/B test:
+
+- `300 DPI + PNG` clearly reduced row/word merging versus `200 DPI + JPEG`.
+- Raising `max_tokens` to `16384` did not produce a meaningful improvement over `12288` for the long schedule table.
+- Mapping `table` regions globally to the fixed prompt `Table Recognition:` improved some simpler tables, but made the long Schedule H table worse. For this service, the current recommendation is to keep the generic prompt path.
+
+If long schedules still collapse rows, the next step is not arbitrary prompt tuning, but chunked extraction of tall detected table regions or a born-digital PDF text-layer fallback.
+
 ## 3. Verify After Boot
 
 Check in vast.ai UI that the instance shows "Running", then from Windows:
@@ -268,5 +287,6 @@ Bad VRAM or NVLink state left by a previous tenant. Not fixable in software.
 | `include_markdown` | bool | `false` | Include raw markdown in response |
 | `include_debug` | bool | `false` | Include region_counts, candidate_regions |
 | `response_format` | string | `json` | `json` or `xlsx` |
+
 
 
