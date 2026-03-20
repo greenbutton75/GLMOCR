@@ -104,6 +104,7 @@ export GLMOCR_UPLOAD_TMP_DIR="$TMP_DIR"
 export GLMOCR_MAX_PDF_SIZE_MB=150
 
 nohup uvicorn app:app \
+    --app-dir "$WORKDIR" \
     --host 0.0.0.0 \
     --port "$API_PORT" \
     --workers 1 \
