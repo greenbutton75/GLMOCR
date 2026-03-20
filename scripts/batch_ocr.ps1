@@ -1,15 +1,55 @@
 # Batch OCR: send all PDFs in $InputDir to GLM-OCR API, save XLSX results.
 #
 # Usage:
-#   .\batch_ocr.ps1
-#   .\batch_ocr.ps1 -ApiUrl "http://127.0.0.1:18001" -InputDir "D:\Work\Riskostat\Corrections\10"
+#   .\batch_ocr.ps1                          # reads endpoint from glmocr_endpoint.txt
+#   .\batch_ocr.ps1 -ApiUrl "http://202.103.208.212:32243"
+#   .\batch_ocr.ps1 -InputDir "D:\Work\Riskostat\Corrections\10"
 
 param(
-    [string]$ApiUrl   = "http://127.0.0.1:8001",
+    [string]$ApiUrl   = "",
     [string]$InputDir = "D:\Work\Riskostat\Corrections\10",
     [string]$OutDir   = "",          # leave empty = save XLSX next to each PDF
     [switch]$SkipExisting            # skip files that already have an XLSX
 )
+
+function Test-ApiHealth {
+    param([string]$Url)
+
+    if ([string]::IsNullOrWhiteSpace($Url)) { return $false }
+
+    try {
+        $null = Invoke-RestMethod -Uri "$Url/health" -Method Get -TimeoutSec 15
+        return $true
+    } catch {
+        return $false
+    }
+}
+
+# resolve ApiUrl from saved endpoint file if not provided
+if (-not $ApiUrl) {
+    $endpointFile = Join-Path $PSScriptRoot "glmocr_endpoint.txt"
+    if (Test-Path $endpointFile) {
+        $ApiUrl = (Get-Content $endpointFile -Raw).Trim()
+        if (Test-ApiHealth $ApiUrl) {
+            Write-Host "Using saved endpoint: $ApiUrl" -ForegroundColor DarkCyan
+        } else {
+            Write-Host "Saved endpoint is stale or not ready yet, resolving live endpoint from Vast.ai..." -ForegroundColor DarkYellow
+            $ApiUrl = ""
+        }
+    }
+
+    if (-not $ApiUrl) {
+        . (Join-Path $PSScriptRoot "vast-glmocr-common.ps1")
+        $resolved = Resolve-ApiUrl -TimeoutSec 180 -PollSec 5
+        if ($resolved.Success -and $resolved.ApiUrl) {
+            $ApiUrl = $resolved.ApiUrl
+            Write-Host "Using live endpoint: $ApiUrl" -ForegroundColor DarkCyan
+        } else {
+            Write-Error "Could not resolve a live GLM-OCR endpoint from Vast.ai. Start or monitor the instance first."
+            exit 1
+        }
+    }
+}
 
 $ErrorActionPreference = "Stop"
 

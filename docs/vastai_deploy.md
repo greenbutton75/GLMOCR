@@ -11,14 +11,15 @@ Repo: https://github.com/greenbutton75/GLMOCR
 
 | Parameter | Value |
 |---|---|
-| GPU | A100 40/80 GB PCIe or SXM (tested on A100 80GB PCIe) |
+| GPU | A100 40/80 GB PCIe or SXM (recommended; tested on A100 80GB PCIe) |
 | CUDA | ≥ 12.1 (required by vLLM 0.17+) |
 | Image | **PyTorch** (Vast built-in template) |
 | Disk | ≥ 40 GB (model ~4 GB, vLLM env ~12 GB) |
 | Ports | expose **18001** (API); 18080 is internal vLLM, not needed externally |
 
-> RTX 3090/4090 (24 GB) also works — reduce `--gpu-memory-utilization` to `0.80`
-> and `--max-model-len` to `16384`.
+> Current production recommendation: use A100 only. RTX 3090/4090 can help with
+> debugging bring-up, but quality and runtime stability were not good enough for
+> real OCR batches.
 
 ---
 
@@ -92,15 +93,14 @@ curl http://127.0.0.1:18080/v1/models
 Script: `D:\Work\ML\GLM-OCR\scripts\batch_ocr.ps1`
 
 ```powershell
-# Direct IP — replace with your instance values from vast.ai UI
-.\batch_ocr.ps1 -ApiUrl "http://<PublicIP>:<MappedPort>" -InputDir "D:\Work\Riskostat\Corrections\10"
+# Auto-resolve current live endpoint from glmocr_endpoint.txt or Vast.ai
+.\batch_ocr.ps1 -InputDir "D:\Work\Riskostat\Corrections\10"
 
 # Skip already-processed files on re-run
-.\batch_ocr.ps1 -ApiUrl "http://<PublicIP>:<MappedPort>" -SkipExisting
+.\batch_ocr.ps1 -SkipExisting
 
 # Save XLSX to a separate folder
-.\batch_ocr.ps1 -ApiUrl "http://<PublicIP>:<MappedPort>" `
-  -InputDir "D:\Work\Riskostat\Corrections\10" `
+.\batch_ocr.ps1 -InputDir "D:\Work\Riskostat\Corrections\10" `
   -OutDir "D:\Work\Riskostat\Corrections\10\xlsx_results"
 ```
 
@@ -268,3 +268,5 @@ Bad VRAM or NVLink state left by a previous tenant. Not fixable in software.
 | `include_markdown` | bool | `false` | Include raw markdown in response |
 | `include_debug` | bool | `false` | Include region_counts, candidate_regions |
 | `response_format` | string | `json` | `json` or `xlsx` |
+
+

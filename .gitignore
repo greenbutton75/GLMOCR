@@ -11,3 +11,7 @@ tmp/
 run/
 .cache/
 schema_dump.py
+
+scripts/.vastai-cli/
+scripts/glmocr_endpoint.txt
+

@@ -18,6 +18,19 @@ API_PORT=18001
 VLLM_MODEL="zai-org/GLM-OCR"
 VLLM_MAX_MODEL_LEN=32768
 VLLM_GPU_MEM=0.85
+VLLM_ENFORCE_EAGER=0
+
+GPU_NAME="$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -n 1 | xargs || true)"
+GPU_MEM_MIB="$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -n 1 | xargs || true)"
+
+if [[ "$GPU_NAME" == *"RTX 4090"* || "$GPU_NAME" == *"RTX 3090"* || "$GPU_NAME" == *"GeForce RTX 4090"* || "$GPU_NAME" == *"GeForce RTX 3090"* ]]; then
+    VLLM_MAX_MODEL_LEN=16384
+    VLLM_GPU_MEM=0.80
+    VLLM_ENFORCE_EAGER=1
+fi
+
+echo "==> GPU detected: ${GPU_NAME:-unknown} (${GPU_MEM_MIB:-unknown} MiB)"
+echo "==> vLLM profile: max_model_len=$VLLM_MAX_MODEL_LEN gpu_memory_utilization=$VLLM_GPU_MEM enforce_eager=$VLLM_ENFORCE_EAGER"
 
 # ── 1. directories ─────────────────────────────────────────────────────────────
 echo "==> Creating directories..."
@@ -58,14 +71,22 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export HF_HOME="$WORKDIR/.cache/huggingface"
 export TRANSFORMERS_CACHE="$WORKDIR/.cache/huggingface"
 
-nohup vllm serve "$VLLM_MODEL" \
-    --host 0.0.0.0 \
-    --port "$VLLM_PORT" \
-    --served-model-name glm-ocr \
-    --allowed-local-media-path "$TMP_DIR" \
-    --max-model-len "$VLLM_MAX_MODEL_LEN" \
-    --max-num-seqs 1 \
-    --gpu-memory-utilization "$VLLM_GPU_MEM" \
+VLLM_ARGS=(
+    serve "$VLLM_MODEL"
+    --host 0.0.0.0
+    --port "$VLLM_PORT"
+    --served-model-name glm-ocr
+    --allowed-local-media-path "$TMP_DIR"
+    --max-model-len "$VLLM_MAX_MODEL_LEN"
+    --max-num-seqs 1
+    --gpu-memory-utilization "$VLLM_GPU_MEM"
+)
+
+if [ "$VLLM_ENFORCE_EAGER" = "1" ]; then
+    VLLM_ARGS+=(--enforce-eager)
+fi
+
+nohup vllm "${VLLM_ARGS[@]}" \
     > "$LOG_DIR/vllm.log" 2>&1 &
 
 VLLM_PID=$!
@@ -150,3 +171,4 @@ echo ""
 echo " Logs:"
 echo "   tail -f $LOG_DIR/vllm.log"
 echo "   tail -f $LOG_DIR/api.log"
+
